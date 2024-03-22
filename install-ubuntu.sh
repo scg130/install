@@ -11,13 +11,13 @@ swapoff -a
 sed -i '/swap/ s/^\(.*\)$/#\1/g' /etc/fstab
 
 # /etc/hosts 127.0.0.1 master
+hostnamectl set-hostname master
 echo 'master' > /etc/hostname
 
 curl -fsSL https://test.docker.com -o test-docker.sh
 sudo sh test-docker.sh
 sudo gpasswd -a $USER docker
-newgrp docker
-
+# newgrp docker
 
 mkdir /etc/docker
 cat > /etc/docker/daemon.json << EOF
@@ -71,6 +71,13 @@ sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubun
 
 sudo apt update
 sudo apt install -y containerd.io
+cat > /etc/crictl.yaml <<EOF
+runtime-endpoint: unix:///var/run/containerd/containerd.sock
+image-endpoint: unix:///var/run/containerd/containerd.sock
+timeout: 0
+debug: false
+pull-image-on-create: false
+EOF
 containerd config default | sudo tee /etc/containerd/config.toml >/dev/null 2>&1
 sudo sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml
 sudo systemctl restart containerd
@@ -93,17 +100,12 @@ sudo sysctl --system
 
 
 sudo apt-get install -y apt-transport-https ca-certificates curl
-# sudo curl -fsSLo /etc/apt/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
-sudo curl -fsSLo /etc/apt/keyrings/kubernetes-archive-keyring.gpg https://mirrors.aliyun.com/kubernetes/apt/doc/apt-key.gpg
-sudo cp /etc/apt/keyrings/kubernetes-archive-keyring.gpg  /usr/share/keyrings/kubernetes-archive-keyring.gpg
-echo "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
-
+echo "deb https://mirrors.aliyun.com/kubernetes/apt/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+curl https://mirrors.aliyun.com/kubernetes/apt/doc/apt-key.gpg |sudo apt-key add -
 sudo apt-get update
 sudo apt-get install -y kubelet kubeadm kubectl
+apt install -y ipvsadm
 sudo apt-mark hold kubelet kubeadm kubectl
-# 换源
-# echo "deb https://mirrors.aliyun.com/kubernetes/apt/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
-# sudo apt-get update
 
 
 sudo rm /etc/containerd/config.toml
@@ -118,10 +120,10 @@ systemctl restart kubelet
 kubeadm reset all -f
 ipvsadm --clear
 rm -fr ~/.kube/  /etc/kubernetes/* var/lib/etcd/* /etc/cni/net.d
-systemctl restart kubelet && systemctl status kubelet
+systemctl restart kubelet 
 
 kubeadm init \
---apiserver-advertise-address=192.168.1.175 \
+--apiserver-advertise-address=192.168.1.179 \
 --apiserver-bind-port=6443 \
 --pod-network-cidr=10.244.0.0/16 \
 --service-cidr=172.96.0.0/12 \
@@ -142,7 +144,7 @@ systemctl restart kubelet
 
 kubectl describe nodes master  | grep Taints
 
-kubectl taint nodes --all node-role.kubernetes.io/master-
+kubectl taint nodes --all node-role.kubernetes.io/control-plane-
 kubectl taint nodes --all node.kubernetes.io/not-ready-
 
 
@@ -153,6 +155,9 @@ kubectl taint nodes --all node.kubernetes.io/not-ready-
 # 使用flannel 当前最新
 # curl https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml -o flannel.yml
 kubectl apply -f flannel.yml
+
+systemctl restart containerd
+systemctl restart kubelet
 
 kubectl create ns kubernetes-dashboard
 
@@ -166,7 +171,7 @@ kubectl create secret generic kubernetes-dashboard-certs --from-file=dashboard.k
 
 kubectl create clusterrolebinding test:anonymous --clusterrole=cluster-admin --user=system:anonymous
 kubectl create clusterrolebinding login-on-dashboard-with-cluster-admin --clusterrole=cluster-admin --user=admin
-
+cd /usr/local/src
 
 kubectl apply -f dashboard.yml
 kubectl apply -f dashboard-admin.yml

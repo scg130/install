@@ -138,7 +138,7 @@ sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 export KUBECONFIG=/etc/kubernetes/admin.conf
 echo "admin,smd013012,1" > /etc/kubernetes/pki/basic_auth_file
-sed -i 's/- --allow-privileged=true/- --allow-privileged=true\n    - --service-node-port-range=1-50000/g' /etc/kubernetes/manifests/kube-apiserver.yaml   
+sed -i 's/- --allow-privileged=true/- --allow-privileged=true\n    - --token-auth-file=\/etc\/kubernetes\/pki\/basic_auth_file\n    - --service-node-port-range=1-50000/g' /etc/kubernetes/manifests/kube-apiserver.yaml   
 systemctl restart kubelet
 
 sleep 5
